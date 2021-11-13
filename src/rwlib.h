@@ -8,40 +8,6 @@ namespace rwlib {
 /* #functions
 ======================================================================================== */
 
-//this denormalization routine produces a white noise at -300 dB which the noise
-//shaping will interact with to produce a bipolar output, but the noise is actually
-//all positive. That should stop any variables from going denormal, and the routine
-//only kicks in if digital black is input. As a final touch, if you save to 24-bit
-//the silence will return to being digital black again.
-inline long double denormalize(long double inputSample)
-{
-    if (inputSample < 1.2e-38 && -inputSample < 1.2e-38) {
-        static int noisesource = 0;
-        //this declares a variable before anything else is compiled. It won't keep assigning
-        //it to 0 for every sample, it's as if the declaration doesn't exist in this context,
-        //but it lets me add this denormalization fix in a single place rather than updating
-        //it in three different locations. The variable isn't thread-safe but this is only
-        //a random seed and we can share it with whatever.
-        noisesource = noisesource % 1700021;
-        noisesource++;
-        int residue = noisesource * noisesource;
-        residue = residue % 170003;
-        residue *= residue;
-        residue = residue % 17011;
-        residue *= residue;
-        residue = residue % 1709;
-        residue *= residue;
-        residue = residue % 173;
-        residue *= residue;
-        residue = residue % 17;
-        double applyresidue = residue;
-        applyresidue *= 0.00000001;
-        applyresidue *= 0.00000001;
-        inputSample = applyresidue;
-    }
-    return inputSample;
-}
-
 /* #acceleration
 ======================================================================================== */
 struct Acceleration {
@@ -65,7 +31,7 @@ struct Acceleration {
         m1 = m2 = des = 0.0;
     }
 
-    long double process(long double inputSample, float limitParam = 0.f, float drywetParam = 1.f, double overallscale = 1.0)
+    double process(double inputSample, float limitParam = 0.f, float drywetParam = 1.f, double overallscale = 1.0)
     {
         double intensity = pow(limitParam, 3) * (32 / overallscale);
         double wet = drywetParam;
@@ -119,7 +85,7 @@ struct Acceleration {
 ======================================================================================== */
 struct BiquadBandpass {
 
-    long double biquad[11];
+    double biquad[11];
     double K;
     double norm;
 
@@ -130,20 +96,20 @@ struct BiquadBandpass {
         }
     }
 
-    void set(long double frequency, long double resonance)
+    void set(double frequency, double resonance)
     {
         biquad[0] = frequency;
         biquad[1] = resonance;
         update();
     }
 
-    void setFrequency(long double frequency)
+    void setFrequency(double frequency)
     {
         biquad[0] = frequency;
         update();
     }
 
-    void setResonance(long double resonance)
+    void setResonance(double resonance)
     {
         biquad[1] = resonance;
         update();
@@ -159,12 +125,12 @@ struct BiquadBandpass {
         biquad[6] = (1.0 - K / biquad[1] + K * K) * norm;
     }
 
-    long double process(long double inputSample)
+    double process(double inputSample)
     {
         // encode Console5: good cleanness
         inputSample = sin(inputSample);
 
-        long double tempSample;
+        double tempSample;
         tempSample = (inputSample * biquad[2]) + biquad[7];
         biquad[7] = (-tempSample * biquad[5]) + biquad[8];
         biquad[8] = (inputSample * biquad[4]) - (tempSample * biquad[6]);
@@ -224,7 +190,7 @@ struct Cans {
         return this->mode;
     }
 
-    void process(long double& inputSampleL, long double& inputSampleR, double overallscale = 1.0)
+    void process(double& inputSampleL, double& inputSampleR, double overallscale = 1.0)
     {
         int am = (int)149.0 * overallscale;
         int dm = (int)223.0 * overallscale;
@@ -254,11 +220,11 @@ struct Cans {
         inputSampleR = sin(inputSampleR);
 
         // bass narrowing filter (we are using the iir filters from out of SubsOnly)
-        long double drySample = inputSampleL;
-        long double drySampleR = inputSampleR;
-        long double bass = (mode * mode * 0.00001) / overallscale;
-        long double mid = inputSampleL + inputSampleR;
-        long double side = inputSampleL - inputSampleR;
+        double drySample = inputSampleL;
+        double drySampleR = inputSampleR;
+        double bass = (mode * mode * 0.00001) / overallscale;
+        double mid = inputSampleL + inputSampleR;
+        double side = inputSampleL - inputSampleR;
         iirSampleAL = (iirSampleAL * (1.0 - (bass * 0.618))) + (side * bass * 0.618);
         side = side - iirSampleAL;
         inputSampleL = (mid + side) / 2.0;
@@ -382,7 +348,7 @@ struct Dark {
         }
     }
 
-    long double process(long double inputSample, double overallscale = 1.0, bool highres = true)
+    double process(double inputSample, double overallscale = 1.0, bool highres = true)
     {
         int depth = (int)(17.0 * overallscale);
         if (depth < 3)
@@ -458,7 +424,7 @@ struct ElectroHat {
         flip = true;
     }
 
-    long double process(long double inputSample, float typeParam, float trimParam, float brightnessParam, float drywetParam, double overallscale = 1.0, float sampleRate = 44100.f)
+    double process(double inputSample, float typeParam, float trimParam, float brightnessParam, float drywetParam, double overallscale = 1.0, float sampleRate = 44100.f)
     {
         //we will go to another dither for 88 and 96K
         bool highSample = false;
@@ -589,7 +555,7 @@ struct Golem {
         count = 0;
     }
 
-    long double process(long double inputSampleL, long double inputSampleR, float balanceParam = 0.5, float offsetParam = 0.5, float phaseParam = 0.0)
+    double process(double inputSampleL, double inputSampleR, float balanceParam = 0.5, float offsetParam = 0.5, float phaseParam = 0.0)
     {
         // int phase = (int)((phaseParam * 5.999) + 1);
         int phase = (int)phaseParam;
@@ -664,7 +630,7 @@ struct GolemBCN {
         count = 0;
     }
 
-    long double process(long double inputSampleL, long double inputSampleR, float balanceParam = 0.f, float offsetParam = 0.f, float phaseParam = 0.f, int offsetScaling = 0)
+    double process(double inputSampleL, double inputSampleR, float balanceParam = 0.f, float offsetParam = 0.f, float phaseParam = 0.f, int offsetScaling = 0)
     {
         int phase = (int)phaseParam;
         double balance = balanceParam * 0.5;
@@ -745,7 +711,7 @@ struct PeaksOnly {
         dx = 1;
     }
 
-    long double process(long double inputSample, double overallscale = 1.0)
+    double process(double inputSample, double overallscale = 1.0)
     {
         int am = (int)149.0 * overallscale;
         int bm = (int)179.0 * overallscale;
@@ -867,7 +833,7 @@ struct Slew {
         lastSample = 0.0;
     }
 
-    long double process(long double inputSample, float clampParam = 0.f, double overallscale = 1.0)
+    double process(double inputSample, float clampParam = 0.f, double overallscale = 1.0)
     {
         double clamp;
         double threshold = pow((1 - clampParam), 4) / overallscale;
@@ -920,7 +886,7 @@ struct Slew2 {
         LataFlip = false; //end reset of antialias parameters
     }
 
-    long double process(long double inputSample, float clampParam = 0.f, double overallscale = 1.0)
+    double process(double inputSample, float clampParam = 0.f, double overallscale = 1.0)
     {
         double clamp;
         double threshold = pow((1 - clampParam), 4) / overallscale;
@@ -1006,7 +972,7 @@ struct Slew3 {
         lastSampleA = lastSampleB = lastSampleC = 0.0;
     }
 
-    long double process(long double inputSample, float clampParam = 0.0, double overallscale = 1.0)
+    double process(double inputSample, float clampParam = 0.0, double overallscale = 1.0)
     {
         double threshold = pow((1 - clampParam), 4) / overallscale;
 
@@ -1043,9 +1009,9 @@ struct SlewOnly {
         lastSample = 0.0;
     }
 
-    long double process(long double inputSample)
+    double process(double inputSample)
     {
-        long double outputSample;
+        double outputSample;
         double trim = 2.302585092994045684017991; //natural logarithm of 10
 
         outputSample = (inputSample - lastSample) * trim;
@@ -1120,7 +1086,7 @@ struct SubsOnly {
         iirSampleZ = 0.0;
     }
 
-    long double process(long double inputSample, double overallscale = 1.0)
+    double process(double inputSample, double overallscale = 1.0)
     {
         double iirAmount = 2250 / 44100.0;
         double gaintarget = 1.42;
@@ -1354,14 +1320,14 @@ struct Tape {
     double iirHeadBumpA;
     double iirHeadBumpB;
 
-    long double biquadA[9];
-    long double biquadB[9];
-    long double biquadC[9];
-    long double biquadD[9];
+    double biquadA[9];
+    double biquadB[9];
+    double biquadC[9];
+    double biquadD[9];
 
     bool flip;
 
-    long double lastSample;
+    double lastSample;
 
     double inputgain;
     double bumpgain;
@@ -1423,7 +1389,7 @@ struct Tape {
         biquadC[6] = biquadD[6] = (1.0 - K / biquadD[1] + K * K) * norm;
     }
 
-    long double process(long double inputSample, float slamParam = 0.5f, float bumpParam = 0.5f, double overallscale = 1.0)
+    double process(double inputSample, float slamParam = 0.5f, float bumpParam = 0.5f, double overallscale = 1.0)
     {
         if (slamParam != lastSlamParam) {
             inputgain = pow(10.0, ((slamParam - 0.5) * 24.0) / 20.0);
@@ -1435,16 +1401,14 @@ struct Tape {
             lastBumpParam = bumpParam;
         }
 
-        long double drySample = inputSample;
+        double drySample = inputSample;
 
-        long double highsSample = 0.0;
-        long double nonHighsSample = 0.0;
-        long double tempSample;
+        double highsSample = 0.0;
+        double tempSample;
 
         if (flip) {
             iirMidRollerA = (iirMidRollerA * (1.0 - rollAmount)) + (inputSample * rollAmount);
             highsSample = inputSample - iirMidRollerA;
-            nonHighsSample = iirMidRollerA;
 
             iirHeadBumpA += (inputSample * 0.05);
             iirHeadBumpA -= (iirHeadBumpA * iirHeadBumpA * iirHeadBumpA * headBumpFreq);
@@ -1474,7 +1438,6 @@ struct Tape {
         } else {
             iirMidRollerB = (iirMidRollerB * (1.0 - rollAmount)) + (inputSample * rollAmount);
             highsSample = inputSample - iirMidRollerB;
-            nonHighsSample = iirMidRollerB;
 
             iirHeadBumpB += (inputSample * 0.05);
             iirHeadBumpB -= (iirHeadBumpB * iirHeadBumpB * iirHeadBumpB * headBumpFreq);
@@ -1505,7 +1468,7 @@ struct Tape {
         flip = !flip;
 
         // set up UnBox
-        long double groundSampleL = drySample - inputSample;
+        double groundSampleL = drySample - inputSample;
 
         // gain boost inside UnBox: do not boost fringe audio
         if (inputgain != 1.0) {
@@ -1513,7 +1476,7 @@ struct Tape {
         }
 
         // apply Soften depending on polarity
-        long double applySoften = fabs(highsSample) * 1.57079633;
+        double applySoften = fabs(highsSample) * 1.57079633;
         if (applySoften > 1.57079633)
             applySoften = 1.57079633;
         applySoften = 1 - cos(applySoften);
