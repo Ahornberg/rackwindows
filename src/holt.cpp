@@ -222,6 +222,7 @@ struct Holt : Module {
         configParam(FREQUENCY_PARAM, 0.f, 1.f, 1.f, "Frequency");
         configParam(RESONANCE_PARAM, 0.f, 1.f, 0.f, "Resonance");
         configParam(POLES_PARAM, 0.f, 1.f, 1.f, "Poles");
+        onReset();
     }
 
     void onSampleRateChange() override
