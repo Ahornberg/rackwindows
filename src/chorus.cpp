@@ -153,6 +153,7 @@ struct Chorus : Module {
             } else {
                 speed = pow(speedParam, 4) * 0.001;
                 range = pow(rangeParam, 4) * loopLimit * 0.499;
+                start[0] = start[1] = start[2] = start[3] = 0.0;
             }
 
             int count;
