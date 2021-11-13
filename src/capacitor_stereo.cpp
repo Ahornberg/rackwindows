@@ -16,10 +16,6 @@ See ./LICENSE.md for all licenses
 
 #include "plugin.hpp"
 
-// quality options
-#define ECO 0
-#define HIGH 1
-
 struct Capacitor_stereo : Module {
     enum ParamIds {
         LOWPASS_L_PARAM,
@@ -54,7 +50,6 @@ struct Capacitor_stereo : Module {
     const double gainCut = 0.03125;
     const double gainBoost = 32.0;
     bool isLinked;
-    bool quality;
     float lastLowpassParam;
     float lastHighpassParam;
 
@@ -87,7 +82,7 @@ struct Capacitor_stereo : Module {
         double lastHighpass;
         double lastWet;
         int count;
-        long double fpNShape;
+        double fpNShape;
     } stateL[16], stateR[16];
 
     // other
@@ -104,7 +99,6 @@ struct Capacitor_stereo : Module {
         configParam(LINK_PARAM, 0.f, 1.f, 1.f, "Link");
 
         isLinked = true;
-        quality = loadQuality();
         onReset();
     }
 
@@ -150,24 +144,6 @@ struct Capacitor_stereo : Module {
         }
     }
 
-    json_t* dataToJson() override
-    {
-        json_t* rootJ = json_object();
-
-        // quality
-        json_object_set_new(rootJ, "quality", json_integer(quality));
-
-        return rootJ;
-    }
-
-    void dataFromJson(json_t* rootJ) override
-    {
-        // quality
-        json_t* qualityJ = json_object_get(rootJ, "quality");
-        if (qualityJ)
-            quality = json_integer_value(qualityJ);
-    }
-
     void processChannel(stateVars v[], Param& lowpass, Param& highpass, Param& drywet, Input& lowpassCv, Input& highpassCv, Input& drywetCv, Input& input, Output& output)
     {
         // params
@@ -190,8 +166,8 @@ struct Capacitor_stereo : Module {
         double invHighpass;
         double dry;
 
-        long double inputSample;
-        long double drySample;
+        double inputSample;
+        double drySample;
 
         // for each poly channel
         for (int i = 0, numChannels = std::max(1, input.getChannels()); i < numChannels; ++i) {
@@ -213,33 +189,6 @@ struct Capacitor_stereo : Module {
 
             // pad gain
             inputSample *= gainCut;
-
-            if (quality == HIGH) {
-                if (inputSample < 1.2e-38 && -inputSample < 1.2e-38) {
-                    static int noisesource = 0;
-                    //this declares a variable before anything else is compiled. It won't keep assigning
-                    //it to 0 for every sample, it's as if the declaration doesn't exist in this context,
-                    //but it lets me add this denormalization fix in a single place rather than updating
-                    //it in three different locations. The variable isn't thread-safe but this is only
-                    //a random seed and we can share it with whatever.
-                    noisesource = noisesource % 1700021;
-                    noisesource++;
-                    int residue = noisesource * noisesource;
-                    residue = residue % 170003;
-                    residue *= residue;
-                    residue = residue % 17011;
-                    residue *= residue;
-                    residue = residue % 1709;
-                    residue *= residue;
-                    residue = residue % 173;
-                    residue *= residue;
-                    residue = residue % 17;
-                    double applyresidue = residue;
-                    applyresidue *= 0.00000001;
-                    applyresidue *= 0.00000001;
-                    inputSample = applyresidue;
-                }
-            }
 
             drySample = inputSample;
 
@@ -344,16 +293,6 @@ struct Capacitor_stereo : Module {
 
             inputSample = (drySample * dry) + (inputSample * v[i].wet);
 
-            if (quality == HIGH) {
-                //stereo 32 bit dither, made small and tidy.
-                int expon;
-                frexpf((float)inputSample, &expon);
-                long double dither = (rand() / (RAND_MAX * 7.737125245533627e+25)) * pow(2, expon + 62);
-                inputSample += (dither - v[i].fpNShape);
-                v[i].fpNShape = dither;
-                //end 32 bit dither
-            }
-
             // bring gain back up
             inputSample *= gainBoost;
 
@@ -397,47 +336,6 @@ struct Capacitor_stereo : Module {
 };
 
 struct Capacitor_stereoWidget : ModuleWidget {
-
-    // quality item
-    struct QualityItem : MenuItem {
-        Capacitor_stereo* module;
-        int quality;
-
-        void onAction(const event::Action& e) override
-        {
-            module->quality = quality;
-        }
-
-        void step() override
-        {
-            rightText = (module->quality == quality) ? "✔" : "";
-        }
-    };
-
-    void appendContextMenu(Menu* menu) override
-    {
-        Capacitor_stereo* module = dynamic_cast<Capacitor_stereo*>(this->module);
-        assert(module);
-
-        menu->addChild(new MenuSeparator()); // separator
-
-        MenuLabel* qualityLabel = new MenuLabel(); // menu label
-        qualityLabel->text = "Quality";
-        menu->addChild(qualityLabel);
-
-        QualityItem* low = new QualityItem(); // low quality
-        low->text = "Eco";
-        low->module = module;
-        low->quality = 0;
-        menu->addChild(low);
-
-        QualityItem* high = new QualityItem(); // high quality
-        high->text = "High";
-        high->module = module;
-        high->quality = 1;
-        menu->addChild(high);
-    }
-
     Capacitor_stereoWidget(Capacitor_stereo* module)
     {
         setModule(module);

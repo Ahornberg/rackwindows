@@ -157,16 +157,16 @@ struct Monitoring : Module {
             }
 
             // get input
-            long double inputSampleL = inputs[IN_L_INPUT].getVoltage();
-            long double inputSampleR = inputs[IN_R_INPUT].getVoltage();
+            double inputSampleL = inputs[IN_L_INPUT].getVoltage();
+            double inputSampleR = inputs[IN_R_INPUT].getVoltage();
 
             // pad gain
             inputSampleL /= gainFactor;
             inputSampleR /= gainFactor;
 
             // prepare mid and side
-            long double mid = inputSampleL + inputSampleR;
-            long double side = inputSampleL - inputSampleR;
+            double mid = inputSampleL + inputSampleR;
+            double side = inputSampleL - inputSampleR;
 
             // processing modes
             switch (processingMode) {

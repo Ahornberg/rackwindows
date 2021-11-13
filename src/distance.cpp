@@ -15,10 +15,6 @@ See ./LICENSE.md for all licenses
 
 #include "plugin.hpp"
 
-// quality options
-#define ECO 0
-#define HIGH 1
-
 struct Distance : Module {
     enum ParamIds {
         DISTANCE_PARAM,
@@ -42,7 +38,6 @@ struct Distance : Module {
     // module variables
     const double gainCut = 0.03125;
     const double gainBoost = 32.0;
-    int quality;
 
     // control parameters
     float distanceParam;
@@ -55,7 +50,7 @@ struct Distance : Module {
     double thirdresult[16];
     double prevresult[16];
     double last[16];
-    long double fpNShape[16];
+    double fpNShape[16];
 
     // other variables, which do not need to be updated every cycle
     double overallscale;
@@ -74,7 +69,6 @@ struct Distance : Module {
         configParam(DISTANCE_PARAM, 0.f, 1.f, 0.f, "Distance");
         configParam(DRYWET_PARAM, 0.f, 1.f, 1.f, "Dry/Wet");
 
-        quality = loadQuality();
         onReset();
     }
 
@@ -104,24 +98,6 @@ struct Distance : Module {
         overallscale = 1.0;
         overallscale /= 44100.0;
         overallscale *= sampleRate;
-    }
-
-    json_t* dataToJson() override
-    {
-        json_t* rootJ = json_object();
-
-        // quality
-        json_object_set_new(rootJ, "quality", json_integer(quality));
-
-        return rootJ;
-    }
-
-    void dataFromJson(json_t* rootJ) override
-    {
-        // quality
-        json_t* qualityJ = json_object_get(rootJ, "quality");
-        if (qualityJ)
-            quality = json_integer_value(qualityJ);
     }
 
     void process(const ProcessArgs& args) override
@@ -157,8 +133,8 @@ struct Distance : Module {
 
             double postfilter;
             double bridgerectifier;
-            long double inputSample;
-            long double drySample;
+            double inputSample;
+            double drySample;
 
             // number of polyphonic channels
             int numChannels = std::max(1, inputs[IN_INPUT].getChannels());
@@ -171,33 +147,6 @@ struct Distance : Module {
 
                 // pad gain
                 inputSample *= gainCut;
-
-                if (quality == HIGH) {
-                    if (inputSample < 1.2e-38 && -inputSample < 1.2e-38) {
-                        static int noisesource = 0;
-                        //this declares a variable before anything else is compiled. It won't keep assigning
-                        //it to 0 for every sample, it's as if the declaration doesn't exist in this context,
-                        //but it lets me add this denormalization fix in a single place rather than updating
-                        //it in three different locations. The variable isn't thread-safe but this is only
-                        //a random seed and we can share it with whatever.
-                        noisesource = noisesource % 1700021;
-                        noisesource++;
-                        int residue = noisesource * noisesource;
-                        residue = residue % 170003;
-                        residue *= residue;
-                        residue = residue % 17011;
-                        residue *= residue;
-                        residue = residue % 1709;
-                        residue *= residue;
-                        residue = residue % 173;
-                        residue *= residue;
-                        residue = residue % 17;
-                        double applyresidue = residue;
-                        applyresidue *= 0.00000001;
-                        applyresidue *= 0.00000001;
-                        inputSample = applyresidue;
-                    }
-                }
 
                 drySample = inputSample;
 
@@ -227,16 +176,6 @@ struct Distance : Module {
                     inputSample = (drySample * dry) + (inputSample * wet);
                 }
 
-                if (quality == HIGH) {
-                    //stereo 32 bit dither, made small and tidy.
-                    int expon;
-                    frexpf((float)inputSample, &expon);
-                    long double dither = (rand() / (RAND_MAX * 7.737125245533627e+25)) * pow(2, expon + 62);
-                    inputSample += (dither - fpNShape[i]);
-                    fpNShape[i] = dither;
-                    //end 32 bit dither
-                }
-
                 // bring gain back up
                 inputSample *= gainBoost;
 
@@ -249,47 +188,6 @@ struct Distance : Module {
 };
 
 struct DistanceWidget : ModuleWidget {
-
-    // quality item
-    struct QualityItem : MenuItem {
-        Distance* module;
-        int quality;
-
-        void onAction(const event::Action& e) override
-        {
-            module->quality = quality;
-        }
-
-        void step() override
-        {
-            rightText = (module->quality == quality) ? "✔" : "";
-        }
-    };
-
-    void appendContextMenu(Menu* menu) override
-    {
-        Distance* module = dynamic_cast<Distance*>(this->module);
-        assert(module);
-
-        menu->addChild(new MenuSeparator()); // separator
-
-        MenuLabel* qualityLabel = new MenuLabel(); // menu label
-        qualityLabel->text = "Quality";
-        menu->addChild(qualityLabel);
-
-        QualityItem* low = new QualityItem(); // low quality
-        low->text = "Eco";
-        low->module = module;
-        low->quality = 0;
-        menu->addChild(low);
-
-        QualityItem* high = new QualityItem(); // high quality
-        high->text = "High";
-        high->module = module;
-        high->quality = 1;
-        menu->addChild(high);
-    }
-
     DistanceWidget(Distance* module)
     {
         setModule(module);

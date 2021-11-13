@@ -13,10 +13,6 @@ See ./LICENSE.md for all licenses
 
 #include "plugin.hpp"
 
-// quality options
-#define ECO 0
-#define HIGH 1
-
 struct Interstage : Module {
     enum ParamIds {
         NUM_PARAMS
@@ -38,7 +34,6 @@ struct Interstage : Module {
     // module variables
     const double gainCut = 0.03125;
     const double gainBoost = 32.0;
-    int quality;
 
     // state variables (as arrays in order to handle up to 16 polyphonic channels)
     double iirSampleAL[16];
@@ -47,7 +42,7 @@ struct Interstage : Module {
     double iirSampleDL[16];
     double iirSampleEL[16];
     double iirSampleFL[16];
-    long double lastSampleL[16];
+    double lastSampleL[16];
     bool flipL[16];
     uint32_t fpdL[16];
     double iirSampleAR[16];
@@ -56,7 +51,7 @@ struct Interstage : Module {
     double iirSampleDR[16];
     double iirSampleER[16];
     double iirSampleFR[16];
-    long double lastSampleR[16];
+    double lastSampleR[16];
     bool flipR[16];
     uint32_t fpdR[16];
 
@@ -72,7 +67,6 @@ struct Interstage : Module {
     {
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
 
-        quality = loadQuality();
         onReset();
     }
 
@@ -102,30 +96,12 @@ struct Interstage : Module {
         iirAmount = 0.00295 / overallscale;
     }
 
-    json_t* dataToJson() override
-    {
-        json_t* rootJ = json_object();
-
-        // quality
-        json_object_set_new(rootJ, "quality", json_integer(quality));
-
-        return rootJ;
-    }
-
-    void dataFromJson(json_t* rootJ) override
-    {
-        // quality
-        json_t* qualityJ = json_object_get(rootJ, "quality");
-        if (qualityJ)
-            quality = json_integer_value(qualityJ);
-    }
-
-    void processChannel(Input& input, Output& output, double iirSampleA[], double iirSampleB[], double iirSampleC[], double iirSampleD[], double iirSampleE[], double iirSampleF[], long double lastSample[], bool flip[], uint32_t fpd[])
+    void processChannel(Input& input, Output& output, double iirSampleA[], double iirSampleB[], double iirSampleC[], double iirSampleD[], double iirSampleE[], double iirSampleF[], double lastSample[], bool flip[], uint32_t fpd[])
     {
         if (output.isConnected()) {
 
-            long double inputSample;
-            long double drySample;
+            double inputSample;
+            double drySample;
 
             // number of polyphonic channels
             int numChannels = std::max(1, input.getChannels());
@@ -138,11 +114,6 @@ struct Interstage : Module {
 
                 // pad gain
                 inputSample *= gainCut;
-
-                if (quality == HIGH) {
-                    if (fabs(inputSample) < 1.18e-37)
-                        inputSample = fpd[i] * 1.18e-37;
-                }
 
                 drySample = inputSample;
 
@@ -185,17 +156,6 @@ struct Interstage : Module {
 
                 lastSample[i] = inputSample;
 
-                if (quality == HIGH) {
-                    //begin 32 bit stereo floating point dither
-                    int expon;
-                    frexpf((float)inputSample, &expon);
-                    fpd[i] ^= fpd[i] << 13;
-                    fpd[i] ^= fpd[i] >> 17;
-                    fpd[i] ^= fpd[i] << 5;
-                    inputSample += ((double(fpd[i]) - uint32_t(0x7fffffff)) * 5.5e-36l * pow(2, expon + 62));
-                    //end 32 bit stereo floating point dither
-                }
-
                 // bring gain back up
                 inputSample *= gainBoost;
 
@@ -214,47 +174,6 @@ struct Interstage : Module {
 };
 
 struct InterstageWidget : ModuleWidget {
-
-    // quality item
-    struct QualityItem : MenuItem {
-        Interstage* module;
-        int quality;
-
-        void onAction(const event::Action& e) override
-        {
-            module->quality = quality;
-        }
-
-        void step() override
-        {
-            rightText = (module->quality == quality) ? "✔" : "";
-        }
-    };
-
-    void appendContextMenu(Menu* menu) override
-    {
-        Interstage* module = dynamic_cast<Interstage*>(this->module);
-        assert(module);
-
-        menu->addChild(new MenuSeparator()); // separator
-
-        MenuLabel* qualityLabel = new MenuLabel(); // menu label
-        qualityLabel->text = "Quality";
-        menu->addChild(qualityLabel);
-
-        QualityItem* low = new QualityItem(); // low quality
-        low->text = "Eco";
-        low->module = module;
-        low->quality = 0;
-        menu->addChild(low);
-
-        QualityItem* high = new QualityItem(); // high quality
-        high->text = "High";
-        high->module = module;
-        high->quality = 1;
-        menu->addChild(high);
-    }
-
     InterstageWidget(Interstage* module)
     {
         setModule(module);

@@ -16,10 +16,6 @@ See ./LICENSE.md for all licenses
 
 #include "plugin.hpp"
 
-// quality options
-#define ECO 0
-#define HIGH 1
-
 struct Reseq : Module {
     enum ParamIds {
         ENUMS(RESO_PARAMS, 4),
@@ -42,7 +38,6 @@ struct Reseq : Module {
 
     // module variables
     const double gainFactor = 32.0;
-    int quality;
 
     // control parameters
     float r1Param;
@@ -82,7 +77,6 @@ struct Reseq : Module {
         }
         configParam(DRYWET_PARAM, 0.f, 1.f, 1.f, "Dry/Wet");
 
-        quality = loadQuality();
         onReset();
     }
 
@@ -110,24 +104,6 @@ struct Reseq : Module {
         overallscale = 1.0;
         overallscale /= 44100.0;
         overallscale *= sampleRate;
-    }
-
-    json_t* dataToJson() override
-    {
-        json_t* rootJ = json_object();
-
-        // quality
-        json_object_set_new(rootJ, "quality", json_integer(quality));
-
-        return rootJ;
-    }
-
-    void dataFromJson(json_t* rootJ) override
-    {
-        // quality
-        json_t* qualityJ = json_object_get(rootJ, "quality");
-        if (qualityJ)
-            quality = json_integer_value(qualityJ);
     }
 
     void updateParams()
@@ -204,7 +180,7 @@ struct Reseq : Module {
         for (int i = 0; i < numChannels; ++i) {
 
             // input
-            long double inputSample = input.getPolyVoltage(i);
+            double inputSample = input.getPolyVoltage(i);
 
             // pad gain
             inputSample /= gainFactor;
@@ -243,12 +219,7 @@ struct Reseq : Module {
             }
             //done updating the kernel for this go-round
 
-            if (quality == HIGH) {
-                if (fabs(inputSample) < 1.18e-43)
-                    inputSample = fpd[i] * 1.18e-43;
-            }
-
-            long double drySample = inputSample;
+            double drySample = inputSample;
 
             // EQ kernel
             b[i][59] = b[i][58];
@@ -381,17 +352,6 @@ struct Reseq : Module {
                 inputSample = (inputSample * wet) + (drySample * (1.0 - wet));
             }
 
-            if (quality == HIGH) {
-                //begin 64 bit stereo floating point dither
-                int expon;
-                frexp((double)inputSample, &expon);
-                fpd[i] ^= fpd[i] << 13;
-                fpd[i] ^= fpd[i] >> 17;
-                fpd[i] ^= fpd[i] << 5;
-                inputSample += ((double(fpd[i]) - uint32_t(0x7fffffff)) * 1.1e-44l * pow(2, expon + 62));
-                //end 64 bit stereo floating point dither
-            }
-
             // bring gain back up
             inputSample *= gainFactor;
 
@@ -413,47 +373,6 @@ struct Reseq : Module {
 };
 
 struct ReseqWidget : ModuleWidget {
-
-    // quality item
-    struct QualityItem : MenuItem {
-        Reseq* module;
-        int quality;
-
-        void onAction(const event::Action& e) override
-        {
-            module->quality = quality;
-        }
-
-        void step() override
-        {
-            rightText = (module->quality == quality) ? "✔" : "";
-        }
-    };
-
-    void appendContextMenu(Menu* menu) override
-    {
-        Reseq* module = dynamic_cast<Reseq*>(this->module);
-        assert(module);
-
-        menu->addChild(new MenuSeparator()); // separator
-
-        MenuLabel* qualityLabel = new MenuLabel(); // menu label
-        qualityLabel->text = "Quality";
-        menu->addChild(qualityLabel);
-
-        QualityItem* low = new QualityItem(); // low quality
-        low->text = "Eco";
-        low->module = module;
-        low->quality = 0;
-        menu->addChild(low);
-
-        QualityItem* high = new QualityItem(); // high quality
-        high->text = "High";
-        high->module = module;
-        high->quality = 1;
-        menu->addChild(high);
-    }
-
     ReseqWidget(Reseq* module)
     {
         setModule(module);

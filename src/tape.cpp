@@ -14,10 +14,6 @@ See ./LICENSE.md for all licenses
 
 #include "plugin.hpp"
 
-// quality options
-#define ECO 0
-#define HIGH 1
-
 // polyphony
 #define MAX_POLY_CHANNELS 16
 
@@ -46,7 +42,6 @@ struct Tape : Module {
     // module variables
     const double gainCut = 0.1;
     const double gainBoost = 10.0;
-    int quality;
 
     // control parameters
     float slamParam;
@@ -67,7 +62,6 @@ struct Tape : Module {
         configParam(SLAM_PARAM, 0.f, 1.f, 0.5f, "Slam", "%", 0, 100);
         configParam(BUMP_PARAM, 0.f, 1.f, 0.5f, "Bump", "%", 0, 100);
 
-        quality = loadQuality();
         onReset();
     }
 
@@ -97,24 +91,6 @@ struct Tape : Module {
         }
     }
 
-    json_t* dataToJson() override
-    {
-        json_t* rootJ = json_object();
-
-        // quality
-        json_object_set_new(rootJ, "quality", json_integer(quality));
-
-        return rootJ;
-    }
-
-    void dataFromJson(json_t* rootJ) override
-    {
-        // quality
-        json_t* qualityJ = json_object_get(rootJ, "quality");
-        if (qualityJ)
-            quality = json_integer_value(qualityJ);
-    }
-
     void process(const ProcessArgs& args) override
     {
         slamParam = params[SLAM_PARAM].getValue();
@@ -136,28 +112,13 @@ struct Tape : Module {
             for (int i = 0; i < numChannelsL; i++) {
 
                 // input
-                long double inputSampleL = inputs[IN_L_INPUT].getPolyVoltage(i);
+                double inputSampleL = inputs[IN_L_INPUT].getPolyVoltage(i);
 
                 // pad gain
                 inputSampleL *= gainCut;
 
-                if (quality == HIGH) {
-                    if (fabs(inputSampleL) < 1.18e-37)
-                        inputSampleL = fpdL[i] * 1.18e-37;
-                }
-
                 // work the magic
                 inputSampleL = tapeL[i].process(inputSampleL, slamParam, bumpParam, overallscale);
-
-                if (quality == HIGH) {
-                    //32 bit stereo floating point dither
-                    int expon;
-                    frexpf((float)inputSampleL, &expon);
-                    fpdL[i] ^= fpdL[i] << 13;
-                    fpdL[i] ^= fpdL[i] >> 17;
-                    fpdL[i] ^= fpdL[i] << 5;
-                    inputSampleL += ((double(fpdL[i]) - uint32_t(0x7fffffff)) * 5.5e-36l * pow(2, expon + 62));
-                }
 
                 // bring gain back up
                 inputSampleL *= gainBoost;
@@ -175,28 +136,13 @@ struct Tape : Module {
             for (int i = 0; i < numChannelsR; i++) {
 
                 // input
-                long double inputSampleR = inputs[IN_R_INPUT].getPolyVoltage(i);
+                double inputSampleR = inputs[IN_R_INPUT].getPolyVoltage(i);
 
                 // pad gain
                 inputSampleR *= gainCut;
 
-                if (quality == HIGH) {
-                    if (fabs(inputSampleR) < 1.18e-37)
-                        inputSampleR = fpdR[i] * 1.18e-37;
-                }
-
                 // work the magic
                 inputSampleR = tapeR[i].process(inputSampleR, slamParam, bumpParam, overallscale);
-
-                if (quality == HIGH) {
-                    //32 bit stereo floating point dither
-                    int expon;
-                    frexpf((float)inputSampleR, &expon);
-                    fpdR[i] ^= fpdR[i] << 13;
-                    fpdR[i] ^= fpdR[i] >> 17;
-                    fpdR[i] ^= fpdR[i] << 5;
-                    inputSampleR += ((double(fpdR[i]) - uint32_t(0x7fffffff)) * 5.5e-36l * pow(2, expon + 62));
-                }
 
                 // bring gain back up
                 inputSampleR *= gainBoost;
@@ -210,47 +156,6 @@ struct Tape : Module {
 };
 
 struct TapeWidget : ModuleWidget {
-
-    // quality item
-    struct QualityItem : MenuItem {
-        Tape* module;
-        int quality;
-
-        void onAction(const event::Action& e) override
-        {
-            module->quality = quality;
-        }
-
-        void step() override
-        {
-            rightText = (module->quality == quality) ? "✔" : "";
-        }
-    };
-
-    void appendContextMenu(Menu* menu) override
-    {
-        Tape* module = dynamic_cast<Tape*>(this->module);
-        assert(module);
-
-        menu->addChild(new MenuSeparator()); // separator
-
-        MenuLabel* qualityLabel = new MenuLabel(); // menu label
-        qualityLabel->text = "Quality";
-        menu->addChild(qualityLabel);
-
-        QualityItem* low = new QualityItem(); // low quality
-        low->text = "Eco";
-        low->module = module;
-        low->quality = 0;
-        menu->addChild(low);
-
-        QualityItem* high = new QualityItem(); // high quality
-        high->text = "High";
-        high->module = module;
-        high->quality = 1;
-        menu->addChild(high);
-    }
-
     TapeWidget(Tape* module)
     {
         setModule(module);

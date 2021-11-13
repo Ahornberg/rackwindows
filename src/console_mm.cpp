@@ -21,10 +21,6 @@ See ./LICENSE.md for all licenses
 
 #include "plugin.hpp"
 
-// quality options
-#define ECO 0
-#define HIGH 1
-
 // console types
 #define CONSOLE_6 0
 #define PUREST_CONSOLE 1
@@ -56,7 +52,6 @@ struct Console_mm : Module {
     // module variables
     const double gainCut = 0.1;
     const double gainBoost = 10.0;
-    bool quality;
     int consoleType;
     int directOutMode;
 
@@ -68,7 +63,6 @@ struct Console_mm : Module {
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
         configParam(LEVEL_PARAM, -1.f, 1.f, 0.f, "Drive", "%", 0.f, 100.f);
 
-        quality = loadQuality();
         consoleType = loadConsoleType();
         directOutMode = loadDirectOutMode();
         onReset();
@@ -85,9 +79,6 @@ struct Console_mm : Module {
     {
         json_t* rootJ = json_object();
 
-        // quality
-        json_object_set_new(rootJ, "quality", json_integer(quality));
-
         // directOutMode
         json_object_set_new(rootJ, "directOutMode", json_integer(directOutMode));
 
@@ -99,11 +90,6 @@ struct Console_mm : Module {
 
     void dataFromJson(json_t* rootJ) override
     {
-        // quality
-        json_t* qualityJ = json_object_get(rootJ, "quality");
-        if (qualityJ)
-            quality = json_integer_value(qualityJ);
-
         // directOutMode
         json_t* directOutModeJ = json_object_get(rootJ, "directOutMode");
         if (directOutModeJ)
@@ -115,7 +101,7 @@ struct Console_mm : Module {
             consoleType = json_integer_value(consoleTypeJ);
     }
 
-    long double encode(long double inputSample, int consoleType = 0)
+    double encode(double inputSample, int consoleType = 0)
     {
         switch (consoleType) {
         case PUREST_CONSOLE: // PurestConsoleChannel
@@ -137,7 +123,7 @@ struct Console_mm : Module {
         return inputSample;
     }
 
-    long double decode(long double inputSample, int consoleType = 0)
+    double decode(double inputSample, int consoleType = 0)
     {
         switch (consoleType) {
         case PUREST_CONSOLE: // PurestConsoleBuss
@@ -167,8 +153,8 @@ struct Console_mm : Module {
 
     void process(const ProcessArgs& args) override
     {
-        long double directOutSum[] = { 0.0, 0.0, 0.0 };
-        long double stereoOutSum[] = { 0.0, 0.0 };
+        double directOutSum[] = { 0.0, 0.0, 0.0 };
+        double stereoOutSum[] = { 0.0, 0.0 };
 
         // for each input
         for (int x = 0; x < 3; x++) {
@@ -182,7 +168,7 @@ struct Console_mm : Module {
                 for (int i = 0; i < std::max(1, numChannels); i++) {
 
                     // get input
-                    long double inputSample = inputs[IN_INPUTS + x].getPolyVoltage(i);
+                    double inputSample = inputs[IN_INPUTS + x].getPolyVoltage(i);
 
                     if (directOutMode == UNPROCESSED) {
                         // send the input directly to the respective output
@@ -199,11 +185,6 @@ struct Console_mm : Module {
                             inputSample *= gainCut / (params[LEVEL_PARAM].getValue() - 1);
                         } else {
                             inputSample *= gainCut;
-                        }
-
-                        if (quality == HIGH) {
-                            if (fabs(inputSample) < 1.18e-37)
-                                inputSample = fpd[i] * 1.18e-37;
                         }
 
                         // encode
@@ -229,16 +210,6 @@ struct Console_mm : Module {
                     // decode
                     directOutSum[i] = decode(directOutSum[i], consoleType);
 
-                    if (quality == HIGH) {
-                        // 32 bit floating point dither
-                        int expon;
-                        frexpf((float)directOutSum[i], &expon);
-                        fpd[i] ^= fpd[i] << 13;
-                        fpd[i] ^= fpd[i] >> 17;
-                        fpd[i] ^= fpd[i] << 5;
-                        directOutSum[i] += ((double(fpd[i]) - uint32_t(0x7fffffff)) * 5.5e-36l * pow(2, expon + 62));
-                    }
-
                     // bring gain back up + rough compensation for summing
                     if (params[LEVEL_PARAM].getValue() > 0.0) {
                         directOutSum[i] *= gainBoost / (params[LEVEL_PARAM].getValue() + 1) * 0.5;
@@ -262,16 +233,6 @@ struct Console_mm : Module {
                 // decode
                 stereoOutSum[i] = decode(stereoOutSum[i], consoleType);
 
-                if (quality == HIGH) {
-                    // 32 bit floating point dither
-                    int expon;
-                    frexpf((float)stereoOutSum[i], &expon);
-                    fpd[i] ^= fpd[i] << 13;
-                    fpd[i] ^= fpd[i] >> 17;
-                    fpd[i] ^= fpd[i] << 5;
-                    stereoOutSum[i] += ((double(fpd[i]) - uint32_t(0x7fffffff)) * 5.5e-36l * pow(2, expon + 62));
-                }
-
                 // bring gain back up
                 if (params[LEVEL_PARAM].getValue() > 0.0) {
                     stereoOutSum[i] *= gainBoost / (params[LEVEL_PARAM].getValue() + 1);
@@ -289,23 +250,6 @@ struct Console_mm : Module {
 };
 
 struct Console_mmWidget : ModuleWidget {
-
-    // quality item
-    struct QualityItem : MenuItem {
-        Console_mm* module;
-        int quality;
-
-        void onAction(const event::Action& e) override
-        {
-            module->quality = quality;
-        }
-
-        void step() override
-        {
-            rightText = (module->quality == quality) ? "✔" : "";
-        }
-    };
-
     // console type item
     struct ConsoleTypeItem : MenuItem {
         Console_mm* module;
@@ -342,24 +286,6 @@ struct Console_mmWidget : ModuleWidget {
     {
         Console_mm* module = dynamic_cast<Console_mm*>(this->module);
         assert(module);
-
-        menu->addChild(new MenuSeparator()); // separator
-
-        MenuLabel* qualityLabel = new MenuLabel(); // menu label
-        qualityLabel->text = "Quality";
-        menu->addChild(qualityLabel);
-
-        QualityItem* low = new QualityItem(); // low quality
-        low->text = "Eco";
-        low->module = module;
-        low->quality = 0;
-        menu->addChild(low);
-
-        QualityItem* high = new QualityItem(); // high quality
-        high->text = "High";
-        high->module = module;
-        high->quality = 1;
-        menu->addChild(high);
 
         menu->addChild(new MenuSeparator()); // separator
 

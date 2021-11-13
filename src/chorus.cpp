@@ -15,10 +15,6 @@ See ./LICENSE.md for all licenses
 
 #include "plugin.hpp"
 
-// quality options
-#define ECO 0
-#define HIGH 1
-
 struct Chorus : Module {
     enum ParamIds {
         SPEED_PARAM,
@@ -47,7 +43,6 @@ struct Chorus : Module {
     // module variables
     const double gainCut = 0.03125;
     const double gainBoost = 32.0;
-    int quality;
     bool isEnsemble;
 
     // control parameters
@@ -72,8 +67,8 @@ struct Chorus : Module {
     double airFactorR[16];
     bool fpFlipL[16];
     bool fpFlipR[16];
-    long double fpNShapeL[16];
-    long double fpNShapeR[16];
+    double fpNShapeL[16];
+    double fpNShapeR[16];
 
     // other
     double overallscale;
@@ -86,7 +81,6 @@ struct Chorus : Module {
         configParam(DRYWET_PARAM, 0.f, 1.f, 1.f, "Dry/Wet");
         configParam(ENSEMBLE_PARAM, 0.f, 1.f, 0.f, "Ensemble");
 
-        quality = loadQuality();
         isEnsemble = false;
         onReset();
     }
@@ -127,25 +121,7 @@ struct Chorus : Module {
         overallscale *= sampleRate;
     }
 
-    json_t* dataToJson() override
-    {
-        json_t* rootJ = json_object();
-
-        // quality
-        json_object_set_new(rootJ, "quality", json_integer(quality));
-
-        return rootJ;
-    }
-
-    void dataFromJson(json_t* rootJ) override
-    {
-        // quality
-        json_t* qualityJ = json_object_get(rootJ, "quality");
-        if (qualityJ)
-            quality = json_integer_value(qualityJ);
-    }
-
-    void processChannel(Input& input, Output& output, double sweep[], int gcount[], double airPrev[], double airEven[], double airOdd[], double airFactor[], bool fpFlip[], long double fpNShape[])
+    void processChannel(Input& input, Output& output, double sweep[], int gcount[], double airPrev[], double airEven[], double airOdd[], double airFactor[], bool fpFlip[], double fpNShape[])
     {
         if (output.isConnected()) {
 
@@ -188,7 +164,7 @@ struct Chorus : Module {
             //this is a double buffer so we will be splitting it in two
 
             double drySample;
-            long double inputSample;
+            double inputSample;
 
             speed *= overallscale;
 
@@ -203,33 +179,6 @@ struct Chorus : Module {
 
                 // pad gain
                 inputSample *= gainCut;
-
-                if (quality == HIGH) {
-                    if (inputSample < 1.2e-38 && -inputSample < 1.2e-38) {
-                        static int noisesource = 0;
-                        //this declares a variable before anything else is compiled. It won't keep assigning
-                        //it to 0 for every sample, it's as if the declaration doesn't exist in this context,
-                        //but it lets me add this denormalization fix in a single place rather than updating
-                        //it in three different locations. The variable isn't thread-safe but this is only
-                        //a random seed and we can share it with whatever.
-                        noisesource = noisesource % 1700021;
-                        noisesource++;
-                        int residue = noisesource * noisesource;
-                        residue = residue % 170003;
-                        residue *= residue;
-                        residue = residue % 17011;
-                        residue *= residue;
-                        residue = residue % 1709;
-                        residue *= residue;
-                        residue = residue % 173;
-                        residue *= residue;
-                        residue = residue % 17;
-                        double applyresidue = residue;
-                        applyresidue *= 0.00000001;
-                        applyresidue *= 0.00000001;
-                        inputSample = applyresidue;
-                    }
-                }
 
                 drySample = inputSample;
 
@@ -314,16 +263,6 @@ struct Chorus : Module {
                 }
                 fpFlip[i] = !fpFlip[i];
 
-                if (quality == HIGH) {
-                    //stereo 32 bit dither, made small and tidy.
-                    int expon;
-                    frexpf((float)inputSample, &expon);
-                    long double dither = (rand() / (RAND_MAX * 7.737125245533627e+25)) * pow(2, expon + 62);
-                    inputSample += (dither - fpNShape[i]);
-                    fpNShape[i] = dither;
-                    //end 32 bit dither
-                }
-
                 // bring gain back up
                 inputSample *= gainBoost;
 
@@ -347,47 +286,6 @@ struct Chorus : Module {
 };
 
 struct ChorusWidget : ModuleWidget {
-
-    // quality item
-    struct QualityItem : MenuItem {
-        Chorus* module;
-        int quality;
-
-        void onAction(const event::Action& e) override
-        {
-            module->quality = quality;
-        }
-
-        void step() override
-        {
-            rightText = (module->quality == quality) ? "✔" : "";
-        }
-    };
-
-    void appendContextMenu(Menu* menu) override
-    {
-        Chorus* module = dynamic_cast<Chorus*>(this->module);
-        assert(module);
-
-        menu->addChild(new MenuSeparator()); // separator
-
-        MenuLabel* qualityLabel = new MenuLabel(); // menu label
-        qualityLabel->text = "Quality";
-        menu->addChild(qualityLabel);
-
-        QualityItem* low = new QualityItem(); // low quality
-        low->text = "Eco";
-        low->module = module;
-        low->quality = 0;
-        menu->addChild(low);
-
-        QualityItem* high = new QualityItem(); // high quality
-        high->text = "High";
-        high->module = module;
-        high->quality = 1;
-        menu->addChild(high);
-    }
-
     ChorusWidget(Chorus* module)
     {
         setModule(module);

@@ -15,10 +15,6 @@ See ./LICENSE.md for all licenses
 
 #include "plugin.hpp"
 
-// quality options
-#define ECO 0
-#define HIGH 1
-
 struct Hombre : Module {
     enum ParamIds {
         VOICING_PARAM,
@@ -42,7 +38,6 @@ struct Hombre : Module {
     // module variables
     const double gainCut = 0.03125;
     const double gainBoost = 32.0;
-    int quality;
 
     // control parameters
     float voicingParam;
@@ -52,7 +47,7 @@ struct Hombre : Module {
     double p[16][4001];
     double slide[16];
     int gcount[16];
-    long double fpNShape[16];
+    double fpNShape[16];
 
     // other variables, which do not need to be updated every cycle
     double overallscale;
@@ -68,7 +63,6 @@ struct Hombre : Module {
         configParam(VOICING_PARAM, 0.f, 1.f, 0.5f, "Voicing");
         configParam(INTENSITY_PARAM, 0.f, 1.f, 0.5f, "Intensity");
 
-        quality = loadQuality();
         onReset();
     }
 
@@ -98,24 +92,6 @@ struct Hombre : Module {
         widthB = (int)(7.0 * overallscale); //max 364 at 44.1, 792 at 96K
     }
 
-    json_t* dataToJson() override
-    {
-        json_t* rootJ = json_object();
-
-        // quality
-        json_object_set_new(rootJ, "quality", json_integer(quality));
-
-        return rootJ;
-    }
-
-    void dataFromJson(json_t* rootJ) override
-    {
-        // quality
-        json_t* qualityJ = json_object_get(rootJ, "quality");
-        if (qualityJ)
-            quality = json_integer_value(qualityJ);
-    }
-
     void process(const ProcessArgs& args) override
     {
         if (outputs[OUT_OUTPUT].isConnected()) {
@@ -136,7 +112,7 @@ struct Hombre : Module {
             double offsetB;
             double total;
             int count;
-            long double inputSample;
+            double inputSample;
             double drySample;
 
             // input
@@ -150,33 +126,6 @@ struct Hombre : Module {
 
                 // pad gain
                 inputSample *= gainCut;
-
-                if (quality == HIGH) {
-                    if (inputSample < 1.2e-38 && -inputSample < 1.2e-38) {
-                        static int noisesource = 0;
-                        //this declares a variable before anything else is compiled. It won't keep assigning
-                        //it to 0 for every sample, it's as if the declaration doesn't exist in this context,
-                        //but it lets me add this denormalization fix in a single place rather than updating
-                        //it in three different locations. The variable isn't thread-safe but this is only
-                        //a random seed and we can share it with whatever.
-                        noisesource = noisesource % 1700021;
-                        noisesource++;
-                        int residue = noisesource * noisesource;
-                        residue = residue % 170003;
-                        residue *= residue;
-                        residue = residue % 17011;
-                        residue *= residue;
-                        residue = residue % 1709;
-                        residue *= residue;
-                        residue = residue % 173;
-                        residue *= residue;
-                        residue = residue % 17;
-                        double applyresidue = residue;
-                        applyresidue *= 0.00000001;
-                        applyresidue *= 0.00000001;
-                        inputSample = applyresidue;
-                    }
-                }
 
                 drySample = inputSample;
 
@@ -221,16 +170,6 @@ struct Hombre : Module {
                     inputSample = (inputSample * wet) + (drySample * dry);
                 }
 
-                if (quality == HIGH) {
-                    //stereo 32 bit dither, made small and tidy.
-                    int expon;
-                    frexpf((float)inputSample, &expon);
-                    long double dither = (rand() / (RAND_MAX * 7.737125245533627e+25)) * pow(2, expon + 62);
-                    inputSample += (dither - fpNShape[i]);
-                    fpNShape[i] = dither;
-                    //end 32 bit dither
-                }
-
                 // bring gain back up
                 inputSample *= gainBoost;
 
@@ -243,47 +182,6 @@ struct Hombre : Module {
 };
 
 struct HombreWidget : ModuleWidget {
-
-    // quality item
-    struct QualityItem : MenuItem {
-        Hombre* module;
-        int quality;
-
-        void onAction(const event::Action& e) override
-        {
-            module->quality = quality;
-        }
-
-        void step() override
-        {
-            rightText = (module->quality == quality) ? "✔" : "";
-        }
-    };
-
-    void appendContextMenu(Menu* menu) override
-    {
-        Hombre* module = dynamic_cast<Hombre*>(this->module);
-        assert(module);
-
-        menu->addChild(new MenuSeparator()); // separator
-
-        MenuLabel* qualityLabel = new MenuLabel(); // menu label
-        qualityLabel->text = "Quality";
-        menu->addChild(qualityLabel);
-
-        QualityItem* low = new QualityItem(); // low quality
-        low->text = "Eco";
-        low->module = module;
-        low->quality = 0;
-        menu->addChild(low);
-
-        QualityItem* high = new QualityItem(); // high quality
-        high->text = "High";
-        high->module = module;
-        high->quality = 1;
-        menu->addChild(high);
-    }
-
     HombreWidget(Hombre* module)
     {
         setModule(module);

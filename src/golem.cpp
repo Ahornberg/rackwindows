@@ -1,9 +1,5 @@
 #include "plugin.hpp"
 
-// quality options
-#define ECO 0
-#define HIGH 1
-
 // delay modes
 #define DI 0
 #define MIC 1
@@ -46,7 +42,6 @@ struct Golem : Module {
     // module variables
     const double gainCut = 0.1;
     const double gainBoost = 10.0;
-    int quality;
     int delayMode;
     int balanceTrimRange;
     int offsetTrimRange;
@@ -59,7 +54,7 @@ struct Golem : Module {
 
     // state variables
     rwlib::GolemBCN golem;
-    long double fpNShape;
+    double fpNShape;
 
     Golem()
     {
@@ -70,7 +65,6 @@ struct Golem : Module {
         configParam(OFFSET_TRIM_PARAM, -1.f, 1.f, 0.f, "Offset CV");
         configParam(PHASE_PARAM, 0.f, 2.f, 0.f, "Phase");
 
-        quality = ECO;
         delayMode = DI;
         balanceTrimRange = BIPOLAR;
         offsetTrimRange = BIPOLAR;
@@ -92,9 +86,6 @@ struct Golem : Module {
     {
         json_t* rootJ = json_object();
 
-        // quality
-        json_object_set_new(rootJ, "quality", json_integer(quality));
-
         // delay mode
         json_object_set_new(rootJ, "delayMode", json_integer(delayMode));
 
@@ -112,11 +103,6 @@ struct Golem : Module {
 
     void dataFromJson(json_t* rootJ) override
     {
-        // quality
-        json_t* qualityJ = json_object_get(rootJ, "quality");
-        if (qualityJ)
-            quality = json_integer_value(qualityJ);
-
         // delay mode
         json_t* delayModeJ = json_object_get(rootJ, "delayMode");
         if (delayModeJ)
@@ -165,29 +151,15 @@ struct Golem : Module {
         }
 
         // get input
-        long double inputSampleA = inputs[IN_A_INPUT].getVoltage();
-        long double inputSampleB = inputs[IN_B_INPUT].getVoltage();
+        double inputSampleA = inputs[IN_A_INPUT].getVoltage();
+        double inputSampleB = inputs[IN_B_INPUT].getVoltage();
 
         // pad gain
         inputSampleA *= gainCut;
         inputSampleB *= gainCut;
 
-        if (quality == HIGH) {
-            inputSampleA = rwlib::denormalize(inputSampleA);
-            inputSampleB = rwlib::denormalize(inputSampleB);
-        }
-
         // work the magic
-        long double outputSample = golem.process(inputSampleA, inputSampleB, balanceParam, offsetParam, phaseParam, offsetScaling);
-
-        if (quality == HIGH) {
-            //stereo 32 bit dither, made small and tidy.
-            int expon;
-            frexpf((float)outputSample, &expon);
-            long double dither = (rand() / (RAND_MAX * 7.737125245533627e+25)) * pow(2, expon + 62);
-            outputSample += (dither - fpNShape);
-            fpNShape = dither;
-        }
+        double outputSample = golem.process(inputSampleA, inputSampleB, balanceParam, offsetParam, phaseParam, offsetScaling);
 
         // bring levels back up
         outputSample *= gainBoost;
@@ -199,38 +171,6 @@ struct Golem : Module {
 };
 
 struct GolemWidget : ModuleWidget {
-
-    // quality item
-    struct QualityItem : MenuItem {
-        struct QualitySubItem : MenuItem {
-            Golem* module;
-            int quality;
-
-            void onAction(const event::Action& e) override
-            {
-                module->quality = quality;
-            }
-        };
-
-        Golem* module;
-        Menu* createChildMenu() override
-        {
-            Menu* menu = new Menu;
-
-            QualitySubItem* eco = createMenuItem<QualitySubItem>("Eco", CHECKMARK(module->quality == ECO));
-            eco->module = this->module;
-            eco->quality = ECO;
-            menu->addChild(eco);
-
-            QualitySubItem* high = createMenuItem<QualitySubItem>("High", CHECKMARK(module->quality == HIGH));
-            high->module = this->module;
-            high->quality = HIGH;
-            menu->addChild(high);
-
-            return menu;
-        }
-    };
-
     struct DelayModeItem : MenuItem {
         struct DelayModeSubItem : MenuItem {
             Golem* module;
@@ -357,10 +297,6 @@ struct GolemWidget : ModuleWidget {
         MenuLabel* settingsLabel = new MenuLabel();
         settingsLabel->text = "Settings";
         menu->addChild(settingsLabel);
-
-        QualityItem* qualityItem = createMenuItem<QualityItem>("Quality", RIGHT_ARROW);
-        qualityItem->module = module;
-        menu->addChild(qualityItem);
 
         DelayModeItem* delayModeItem = createMenuItem<DelayModeItem>("Delay Mode", RIGHT_ARROW);
         delayModeItem->module = module;

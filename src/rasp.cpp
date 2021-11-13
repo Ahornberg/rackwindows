@@ -17,10 +17,6 @@ See ./LICENSE.md for all licenses
 
 #include "plugin.hpp"
 
-// quality options
-#define ECO 0
-#define HIGH 1
-
 // slew types
 #define SLEW2 0
 #define SLEW 1
@@ -53,7 +49,6 @@ struct Rasp : Module {
     // module variables
     const double gainCut = 0.1;
     const double gainBoost = 10.0;
-    bool quality;
     int slewType;
 
     // control parameters
@@ -65,8 +60,8 @@ struct Rasp : Module {
     rwlib::Slew2 slew2[MAX_POLY_CHANNELS];
     rwlib::Slew3 slew3[MAX_POLY_CHANNELS];
     rwlib::Acceleration acceleration[MAX_POLY_CHANNELS];
-    long double fpNShapeClamp[MAX_POLY_CHANNELS];
-    long double fpNShapeLimit[MAX_POLY_CHANNELS];
+    double fpNShapeClamp[MAX_POLY_CHANNELS];
+    double fpNShapeLimit[MAX_POLY_CHANNELS];
 
     // other
     double overallscale;
@@ -77,7 +72,6 @@ struct Rasp : Module {
         configParam(CLAMP_PARAM, 0.f, 1.f, 0.f, "Clamp", " %", 0.f, 100.f);
         configParam(LIMIT_PARAM, 0.f, 1.f, 0.f, "Limit", " %", 0.f, 100.f);
 
-        quality = ECO;
         slewType = SLEW2;
         onReset();
     }
@@ -114,9 +108,6 @@ struct Rasp : Module {
     {
         json_t* rootJ = json_object();
 
-        // quality
-        json_object_set_new(rootJ, "quality", json_integer(quality));
-
         // slew type
         json_object_set_new(rootJ, "slewType", json_integer(slewType));
 
@@ -125,11 +116,6 @@ struct Rasp : Module {
 
     void dataFromJson(json_t* rootJ) override
     {
-        // quality
-        json_t* qualityJ = json_object_get(rootJ, "quality");
-        if (qualityJ)
-            quality = json_integer_value(qualityJ);
-
         // slew type
         json_t* slewTypeJ = json_object_get(rootJ, "slewType");
         if (slewTypeJ)
@@ -147,9 +133,9 @@ struct Rasp : Module {
         clampParam += inputs[CLAMP_CV_INPUT].getVoltage() / 5;
         clampParam = clamp(clampParam, 0.f, 1.f);
 
-        long double inputSample;
-        long double clampSample = 0.0;
-        long double limitSample = 0.0;
+        double inputSample;
+        double clampSample = 0.0;
+        double limitSample = 0.0;
 
         // for each poly channel
         for (int i = 0, numChannels = std::max(1, inputs[IN_INPUT].getChannels()); i < numChannels; ++i) {
@@ -159,10 +145,6 @@ struct Rasp : Module {
 
             // pad gain
             inputSample *= gainCut;
-
-            if (quality == HIGH) {
-                inputSample = rwlib::denormalize(inputSample);
-            }
 
             // work the magic
             if (outputs[CLAMP_OUTPUT].isConnected()) {
@@ -209,19 +191,6 @@ struct Rasp : Module {
                 }
             }
 
-            if (quality == HIGH) {
-                // 32 bit dither, made small and tidy.
-                int expon;
-                frexpf((float)clampSample, &expon);
-                long double dither = (rand() / (RAND_MAX * 7.737125245533627e+25)) * pow(2, expon + 62);
-                clampSample += (dither - fpNShapeClamp[i]);
-                fpNShapeClamp[i] = dither;
-                frexpf((float)limitSample, &expon);
-                dither = (rand() / (RAND_MAX * 7.737125245533627e+25)) * pow(2, expon + 62);
-                limitSample += (dither - fpNShapeLimit[i]);
-                fpNShapeLimit[i] = dither;
-            }
-
             // bring levels back up
             clampSample *= gainBoost;
             limitSample *= gainBoost;
@@ -236,23 +205,6 @@ struct Rasp : Module {
 };
 
 struct RaspWidget : ModuleWidget {
-
-    // quality item
-    struct QualityItem : MenuItem {
-        Rasp* module;
-        int quality;
-
-        void onAction(const event::Action& e) override
-        {
-            module->quality = quality;
-        }
-
-        void step() override
-        {
-            rightText = (module->quality == quality) ? "✔" : "";
-        }
-    };
-
     // slew type item
     struct SlewTypeItem : MenuItem {
         Rasp* module;
@@ -273,24 +225,6 @@ struct RaspWidget : ModuleWidget {
     {
         Rasp* module = dynamic_cast<Rasp*>(this->module);
         assert(module);
-
-        menu->addChild(new MenuSeparator()); // separator
-
-        MenuLabel* qualityLabel = new MenuLabel(); // menu label
-        qualityLabel->text = "Quality";
-        menu->addChild(qualityLabel);
-
-        QualityItem* low = new QualityItem(); // low quality
-        low->text = "Eco";
-        low->module = module;
-        low->quality = 0;
-        menu->addChild(low);
-
-        QualityItem* high = new QualityItem(); // high quality
-        high->text = "High";
-        high->module = module;
-        high->quality = 1;
-        menu->addChild(high);
 
         menu->addChild(new MenuSeparator()); // separator
 

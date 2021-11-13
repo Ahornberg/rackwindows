@@ -16,10 +16,6 @@ See ./LICENSE.md for all licenses
 
 #include "plugin.hpp"
 
-// quality options
-#define ECO 0
-#define HIGH 1
-
 struct Capacitor : Module {
     enum ParamIds {
         LOWPASS_PARAM,
@@ -43,7 +39,6 @@ struct Capacitor : Module {
     // module variables
     const double gainCut = 0.03125;
     const double gainBoost = 32.0;
-    int quality;
 
     // control parameters
     float lowpassParam;
@@ -69,7 +64,7 @@ struct Capacitor : Module {
     double lastLowpass[16];
     double lastHighpass[16];
     int count[16];
-    long double fpNShape[16];
+    double fpNShape[16];
 
     // other
     double overallscale;
@@ -80,7 +75,6 @@ struct Capacitor : Module {
         configParam(LOWPASS_PARAM, 0.f, 1.f, 1.f, "Lowpass");
         configParam(HIGHPASS_PARAM, 0.f, 1.f, 0.f, "Highpass");
 
-        quality = loadQuality();
         onReset();
     }
 
@@ -121,24 +115,6 @@ struct Capacitor : Module {
         overallscale *= sampleRate;
     }
 
-    json_t* dataToJson() override
-    {
-        json_t* rootJ = json_object();
-
-        // quality
-        json_object_set_new(rootJ, "quality", json_integer(quality));
-
-        return rootJ;
-    }
-
-    void dataFromJson(json_t* rootJ) override
-    {
-        // quality
-        json_t* qualityJ = json_object_get(rootJ, "quality");
-        if (qualityJ)
-            quality = json_integer_value(qualityJ);
-    }
-
     void process(const ProcessArgs& args) override
     {
         if (outputs[OUT_OUTPUT].isConnected()) {
@@ -155,7 +131,7 @@ struct Capacitor : Module {
             double highpassSpeed;
             double invLowpass;
             double invHighpass;
-            long double inputSample;
+            double inputSample;
 
             // for each poly channel
             for (int i = 0, numChannels = std::max(1, inputs[IN_INPUT].getChannels()); i < numChannels; ++i) {
@@ -174,33 +150,6 @@ struct Capacitor : Module {
 
                 // pad gain
                 inputSample *= gainCut;
-
-                if (quality == HIGH) {
-                    if (inputSample < 1.2e-38 && -inputSample < 1.2e-38) {
-                        static int noisesource = 0;
-                        //this declares a variable before anything else is compiled. It won't keep assigning
-                        //it to 0 for every sample, it's as if the declaration doesn't exist in this context,
-                        //but it lets me add this denormalization fix in a single place rather than updating
-                        //it in three different locations. The variable isn't thread-safe but this is only
-                        //a random seed and we can share it with whatever.
-                        noisesource = noisesource % 1700021;
-                        noisesource++;
-                        int residue = noisesource * noisesource;
-                        residue = residue % 170003;
-                        residue *= residue;
-                        residue = residue % 17011;
-                        residue *= residue;
-                        residue = residue % 1709;
-                        residue *= residue;
-                        residue = residue % 173;
-                        residue *= residue;
-                        residue = residue % 17;
-                        double applyresidue = residue;
-                        applyresidue *= 0.00000001;
-                        applyresidue *= 0.00000001;
-                        inputSample = applyresidue;
-                    }
-                }
 
                 lowpassAmount[i] = (((lowpassAmount[i] * lowpassSpeed) + lowpassChase[i]) / (lowpassSpeed + 1.0));
                 invLowpass = 1.0 - lowpassAmount[i];
@@ -299,16 +248,6 @@ struct Capacitor : Module {
                     break;
                 }
 
-                //stereo 32 bit dither, made small and tidy.
-                if (quality == HIGH) {
-                    int expon;
-                    frexpf((float)inputSample, &expon);
-                    long double dither = (rand() / (RAND_MAX * 7.737125245533627e+25)) * pow(2, expon + 62);
-                    inputSample += (dither - fpNShape[i]);
-                    fpNShape[i] = dither;
-                    //end 32 bit dither
-                }
-
                 // bring gain back up
                 inputSample *= gainBoost;
 
@@ -321,47 +260,6 @@ struct Capacitor : Module {
 };
 
 struct CapacitorWidget : ModuleWidget {
-
-    // quality item
-    struct QualityItem : MenuItem {
-        Capacitor* module;
-        int quality;
-
-        void onAction(const event::Action& e) override
-        {
-            module->quality = quality;
-        }
-
-        void step() override
-        {
-            rightText = (module->quality == quality) ? "✔" : "";
-        }
-    };
-
-    void appendContextMenu(Menu* menu) override
-    {
-        Capacitor* module = dynamic_cast<Capacitor*>(this->module);
-        assert(module);
-
-        menu->addChild(new MenuSeparator()); // separator
-
-        MenuLabel* qualityLabel = new MenuLabel(); // menu label
-        qualityLabel->text = "Quality";
-        menu->addChild(qualityLabel);
-
-        QualityItem* low = new QualityItem(); // low quality
-        low->text = "Eco";
-        low->module = module;
-        low->quality = 0;
-        menu->addChild(low);
-
-        QualityItem* high = new QualityItem(); // high quality
-        high->text = "High";
-        high->module = module;
-        high->quality = 1;
-        menu->addChild(high);
-    }
-
     CapacitorWidget(Capacitor* module)
     {
         setModule(module);

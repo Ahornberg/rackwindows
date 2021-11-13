@@ -14,10 +14,6 @@ See ./LICENSE.md for all licenses
 
 #include "plugin.hpp"
 
-// quality options
-#define ECO 0
-#define HIGH 1
-
 struct Mv : Module {
     enum ParamIds {
         DEPTH_PARAM,
@@ -51,7 +47,6 @@ struct Mv : Module {
     // module variables
     const double gainCut = 0.03125;
     const double gainBoost = 32.0;
-    int quality;
 
     // control parameters
     float depthParam;
@@ -214,7 +209,6 @@ struct Mv : Module {
         configParam(DRYWET_CV_PARAM, -1.f, 1.f, 0.f, "Dry/Wet CV");
         configParam(REGEN_CV_PARAM, -1.f, 1.f, 0.f, "Regeneration CV");
 
-        quality = loadQuality();
         onReset();
     }
 
@@ -441,24 +435,6 @@ struct Mv : Module {
     {
     }
 
-    json_t* dataToJson() override
-    {
-        json_t* rootJ = json_object();
-
-        // quality
-        json_object_set_new(rootJ, "quality", json_integer(quality));
-
-        return rootJ;
-    }
-
-    void dataFromJson(json_t* rootJ) override
-    {
-        // quality
-        json_t* qualityJ = json_object_get(rootJ, "quality");
-        if (qualityJ)
-            quality = json_integer_value(qualityJ);
-    }
-
     void process(const ProcessArgs& args) override
     {
         if (outputs[OUT_L_OUTPUT].isConnected() || outputs[OUT_R_OUTPUT].isConnected()) {
@@ -502,61 +478,12 @@ struct Mv : Module {
             double wet = drywetParam;
 
             // get inputs
-            long double inputSampleL = inputs[IN_L_INPUT].getVoltage();
-            long double inputSampleR = inputs[IN_R_INPUT].getVoltage();
+            double inputSampleL = inputs[IN_L_INPUT].getVoltage();
+            double inputSampleR = inputs[IN_R_INPUT].getVoltage();
 
             // pad gain
             inputSampleL *= gainCut;
             inputSampleR *= gainCut;
-
-            if (quality == HIGH) {
-                //for live air, we always apply the dither noise. Then, if our result is
-                //effectively digital black, we'll subtract it again. We want a 'air' hiss
-                static int noisesourceL = 0;
-                static int noisesourceR = 850010;
-                int residue;
-                double applyresidue;
-
-                noisesourceL = noisesourceL % 1700021;
-                noisesourceL++;
-                residue = noisesourceL * noisesourceL;
-                residue = residue % 170003;
-                residue *= residue;
-                residue = residue % 17011;
-                residue *= residue;
-                residue = residue % 1709;
-                residue *= residue;
-                residue = residue % 173;
-                residue *= residue;
-                residue = residue % 17;
-                applyresidue = residue;
-                applyresidue *= 0.00000001;
-                applyresidue *= 0.00000001;
-                inputSampleL += applyresidue;
-                if (inputSampleL < 1.2e-38 && -inputSampleL < 1.2e-38) {
-                    inputSampleL -= applyresidue;
-                }
-
-                noisesourceR = noisesourceR % 1700021;
-                noisesourceR++;
-                residue = noisesourceR * noisesourceR;
-                residue = residue % 170003;
-                residue *= residue;
-                residue = residue % 17011;
-                residue *= residue;
-                residue = residue % 1709;
-                residue *= residue;
-                residue = residue % 173;
-                residue *= residue;
-                residue = residue % 17;
-                applyresidue = residue;
-                applyresidue *= 0.00000001;
-                applyresidue *= 0.00000001;
-                inputSampleR += applyresidue;
-                if (inputSampleR < 1.2e-38 && -inputSampleR < 1.2e-38) {
-                    inputSampleR -= applyresidue;
-                }
-            }
 
             double drySampleL = inputSampleL;
             double drySampleR = inputSampleR;
@@ -1403,22 +1330,6 @@ struct Mv : Module {
             inputSampleL *= gainBoost;
             inputSampleR *= gainBoost;
 
-            if (quality == HIGH) {
-                //begin 64 bit stereo floating point dither
-                int expon;
-                frexp((double)inputSampleL, &expon);
-                fpd ^= fpd << 13;
-                fpd ^= fpd >> 17;
-                fpd ^= fpd << 5;
-                inputSampleL += static_cast<int32_t>(fpd) * 1.110223024625156e-44L * pow(2, expon + 62);
-                frexp((double)inputSampleR, &expon);
-                fpd ^= fpd << 13;
-                fpd ^= fpd >> 17;
-                fpd ^= fpd << 5;
-                inputSampleR += static_cast<int32_t>(fpd) * 1.110223024625156e-44L * pow(2, expon + 62);
-                //end 64 bit stereo floating point dither
-            }
-
             outputs[OUT_L_OUTPUT].setVoltage(inputSampleL);
             outputs[OUT_R_OUTPUT].setVoltage(inputSampleR);
         }
@@ -1426,47 +1337,6 @@ struct Mv : Module {
 };
 
 struct MvWidget : ModuleWidget {
-
-    // quality item
-    struct QualityItem : MenuItem {
-        Mv* module;
-        int quality;
-
-        void onAction(const event::Action& e) override
-        {
-            module->quality = quality;
-        }
-
-        void step() override
-        {
-            rightText = (module->quality == quality) ? "✔" : "";
-        }
-    };
-
-    void appendContextMenu(Menu* menu) override
-    {
-        Mv* module = dynamic_cast<Mv*>(this->module);
-        assert(module);
-
-        menu->addChild(new MenuSeparator()); // separator
-
-        MenuLabel* qualityLabel = new MenuLabel(); // menu label
-        qualityLabel->text = "Quality";
-        menu->addChild(qualityLabel);
-
-        QualityItem* low = new QualityItem(); // low quality
-        low->text = "Eco";
-        low->module = module;
-        low->quality = 0;
-        menu->addChild(low);
-
-        QualityItem* high = new QualityItem(); // high quality
-        high->text = "High";
-        high->module = module;
-        high->quality = 1;
-        menu->addChild(high);
-    }
-
     MvWidget(Mv* module)
     {
         setModule(module);

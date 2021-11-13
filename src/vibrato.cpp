@@ -15,10 +15,6 @@ See ./LICENSE.md for all licenses
 
 #include "plugin.hpp"
 
-// quality options
-#define ECO 0
-#define HIGH 1
-
 struct Vibrato : Module {
 
     enum ParamIds {
@@ -53,7 +49,6 @@ struct Vibrato : Module {
     // module variables
     const double gainCut = 0.03125;
     const double gainBoost = 32.0;
-    int quality;
     dsp::PulseGenerator eocPulse, eocFmPulse;
 
     // control parameters
@@ -100,7 +95,6 @@ struct Vibrato : Module {
         configParam(FMDEPTH_PARAM, 0.f, 1.f, 0.f, "FM Depth");
         configParam(INVWET_PARAM, 0.f, 1.f, 0.5f, "Inv/Wet");
 
-        quality = loadQuality();
         onReset();
     }
 
@@ -139,24 +133,6 @@ struct Vibrato : Module {
         overallscale = 1.0;
         overallscale /= 44100.0;
         overallscale *= sampleRate;
-    }
-
-    json_t* dataToJson() override
-    {
-        json_t* rootJ = json_object();
-
-        // quality
-        json_object_set_new(rootJ, "quality", json_integer(quality));
-
-        return rootJ;
-    }
-
-    void dataFromJson(json_t* rootJ) override
-    {
-        // quality
-        json_t* qualityJ = json_object_get(rootJ, "quality");
-        if (qualityJ)
-            quality = json_integer_value(qualityJ);
     }
 
     void process(const ProcessArgs& args) override
@@ -210,15 +186,10 @@ struct Vibrato : Module {
             for (int i = 0; i < numChannels; i++) {
 
                 // input
-                long double inputSample = inputs[IN_INPUT].getPolyVoltage(i);
+                double inputSample = inputs[IN_INPUT].getPolyVoltage(i);
 
                 // pad gain
                 inputSample *= gainCut;
-
-                if (quality == HIGH) {
-                    if (fabs(inputSample) < 1.18e-37)
-                        inputSample = fpd[i] * 1.18e-37;
-                }
 
                 double drySample = inputSample;
 
@@ -276,17 +247,6 @@ struct Vibrato : Module {
                     inputSample = (inputSample * wet) + (drySample * (1.0 - fabs(wet)));
                 }
 
-                if (quality == HIGH) {
-                    //begin 32 bit stereo floating point dither
-                    int expon;
-                    frexpf((float)inputSample, &expon);
-                    fpd[i] ^= fpd[i] << 13;
-                    fpd[i] ^= fpd[i] >> 17;
-                    fpd[i] ^= fpd[i] << 5;
-                    inputSample += ((double(fpd[i]) - uint32_t(0x7fffffff)) * 5.5e-36l * pow(2, expon + 62));
-                    //end 32 bit stereo floating point dither
-                }
-
                 // bring gain back up
                 inputSample *= gainBoost;
 
@@ -315,47 +275,6 @@ struct Vibrato : Module {
 };
 
 struct VibratoWidget : ModuleWidget {
-
-    // quality item
-    struct QualityItem : MenuItem {
-        Vibrato* module;
-        int quality;
-
-        void onAction(const event::Action& e) override
-        {
-            module->quality = quality;
-        }
-
-        void step() override
-        {
-            rightText = (module->quality == quality) ? "✔" : "";
-        }
-    };
-
-    void appendContextMenu(Menu* menu) override
-    {
-        Vibrato* module = dynamic_cast<Vibrato*>(this->module);
-        assert(module);
-
-        menu->addChild(new MenuSeparator()); // separator
-
-        MenuLabel* qualityLabel = new MenuLabel(); // menu label
-        qualityLabel->text = "Quality";
-        menu->addChild(qualityLabel);
-
-        QualityItem* low = new QualityItem(); // low quality
-        low->text = "Eco";
-        low->module = module;
-        low->quality = 0;
-        menu->addChild(low);
-
-        QualityItem* high = new QualityItem(); // high quality
-        high->text = "High";
-        high->module = module;
-        high->quality = 1;
-        menu->addChild(high);
-    }
-
     VibratoWidget(Vibrato* module)
     {
         setModule(module);

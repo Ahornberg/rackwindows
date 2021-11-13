@@ -18,10 +18,6 @@ See ./LICENSE.md for all licenses
 
 #include "plugin.hpp"
 
-// quality options
-#define ECO 0
-#define HIGH 1
-
 // console types
 #define CONSOLE_6 0
 #define PUREST_CONSOLE 1
@@ -50,7 +46,6 @@ struct Console : Module {
     // module variables
     const double gainCut = 0.1;
     const double gainBoost = 10.0;
-    bool quality;
     int consoleType;
     dsp::VuMeter2 vuMeters[9];
     dsp::ClockDivider lightDivider;
@@ -63,7 +58,6 @@ struct Console : Module {
     {
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
 
-        quality = loadQuality();
         consoleType = loadConsoleType();
         lightDivider.setDivision(512);
         onReset();
@@ -80,9 +74,6 @@ struct Console : Module {
     {
         json_t* rootJ = json_object();
 
-        // quality
-        json_object_set_new(rootJ, "quality", json_integer(quality));
-
         // consoleType
         json_object_set_new(rootJ, "consoleType", json_integer(consoleType));
 
@@ -91,18 +82,13 @@ struct Console : Module {
 
     void dataFromJson(json_t* rootJ) override
     {
-        // quality
-        json_t* qualityJ = json_object_get(rootJ, "quality");
-        if (qualityJ)
-            quality = json_integer_value(qualityJ);
-
         // consoleType
         json_t* consoleTypeJ = json_object_get(rootJ, "consoleType");
         if (consoleTypeJ)
             consoleType = json_integer_value(consoleTypeJ);
     }
 
-    long double encode(long double inputSample, int consoleType = 0)
+    double encode(double inputSample, int consoleType = 0)
     {
         switch (consoleType) {
         case PUREST_CONSOLE: // PurestConsoleChannel
@@ -125,7 +111,7 @@ struct Console : Module {
         return inputSample;
     }
 
-    long double decode(long double inputSample, int consoleType = 0)
+    double decode(double inputSample, int consoleType = 0)
     {
         switch (consoleType) {
         case PUREST_CONSOLE: // PurestConsoleBuss
@@ -148,7 +134,7 @@ struct Console : Module {
         return inputSample;
     }
 
-    float consoleChannel(Input& input, long double mix[], int numChannels)
+    float consoleChannel(Input& input, double mix[], int numChannels)
     {
         if (input.isConnected()) {
             float sum = 0.0f;
@@ -159,7 +145,7 @@ struct Console : Module {
 
             for (int i = 0; i < numChannels; i++) {
 
-                long double inputSample = inputSamples[i];
+                double inputSample = inputSamples[i];
 
                 // inputSample *= rescale(drive, 0, 1, 0.5, 2);
 
@@ -168,11 +154,6 @@ struct Console : Module {
 
                 // pad gain, will be boosted in consoleBuss()
                 inputSample *= gainCut;
-
-                if (quality == HIGH) {
-                    if (fabs(inputSample) < 1.18e-37)
-                        inputSample = fpd[i] * 1.18e-37;
-                }
 
                 // encode
                 inputSample = encode(inputSample, consoleType);
@@ -185,26 +166,16 @@ struct Console : Module {
         return 0.0f;
     }
 
-    void consoleBuss(Output& output, long double mix[], int maxChannels)
+    void consoleBuss(Output& output, double mix[], int maxChannels)
     {
         if (output.isConnected()) {
             float out[16] = {};
 
             for (int i = 0; i < maxChannels; i++) {
-                long double inputSample = mix[i];
+                double inputSample = mix[i];
 
                 // decode
                 inputSample = decode(inputSample, consoleType);
-
-                if (quality == HIGH) {
-                    //begin 32 bit stereo floating point dither
-                    int expon;
-                    frexpf((float)inputSample, &expon);
-                    fpd[i] ^= fpd[i] << 13;
-                    fpd[i] ^= fpd[i] >> 17;
-                    fpd[i] ^= fpd[i] << 5;
-                    inputSample += ((double(fpd[i]) - uint32_t(0x7fffffff)) * 5.5e-36l * pow(2, expon + 62));
-                }
 
                 // bring gain back up
                 inputSample *= gainBoost;
@@ -220,8 +191,8 @@ struct Console : Module {
     void process(const ProcessArgs& args) override
     {
         if (outputs[OUT_L_OUTPUT].isConnected() || outputs[OUT_R_OUTPUT].isConnected()) {
-            long double mixL[16] = {};
-            long double mixR[16] = {};
+            double mixL[16] = {};
+            double mixR[16] = {};
             float sumL = 0.0;
             float sumR = 0.0;
             int numChannelsL = 1;
@@ -256,22 +227,6 @@ struct Console : Module {
 struct ConsoleWidget : ModuleWidget {
 
     SvgPanel* darkPanel;
-
-    // quality item
-    struct QualityItem : MenuItem {
-        Console* module;
-        int quality;
-
-        void onAction(const event::Action& e) override
-        {
-            module->quality = quality;
-        }
-
-        void step() override
-        {
-            rightText = (module->quality == quality) ? "✔" : "";
-        }
-    };
 
     // console type item
     struct ConsoleTypeItem : MenuItem {
@@ -342,24 +297,6 @@ struct ConsoleWidget : ModuleWidget {
     {
         Console* module = dynamic_cast<Console*>(this->module);
         assert(module);
-
-        menu->addChild(new MenuSeparator()); // separator
-
-        MenuLabel* qualityLabel = new MenuLabel(); // menu label
-        qualityLabel->text = "Quality";
-        menu->addChild(qualityLabel);
-
-        QualityItem* low = new QualityItem(); // low quality
-        low->text = "Eco";
-        low->module = module;
-        low->quality = ECO;
-        menu->addChild(low);
-
-        QualityItem* high = new QualityItem(); // high quality
-        high->text = "High";
-        high->module = module;
-        high->quality = HIGH;
-        menu->addChild(high);
 
         menu->addChild(new MenuSeparator()); // separator
 
