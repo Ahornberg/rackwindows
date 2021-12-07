@@ -69,6 +69,13 @@ struct Distance : Module {
         configParam(DISTANCE_PARAM, 0.f, 1.f, 0.f, "Distance");
         configParam(DRYWET_PARAM, 0.f, 1.f, 1.f, "Dry/Wet");
 
+        configInput(DISTANCE_CV_INPUT, "Distance CV");
+        configInput(DRYWET_CV_INPUT, "Dry/wet CV");
+        configInput(IN_INPUT, "Signal");
+        configOutput(OUT_OUTPUT, "Signal");
+
+        configBypass(IN_INPUT, OUT_OUTPUT);
+
         onReset();
     }
 

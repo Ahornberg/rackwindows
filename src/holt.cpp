@@ -222,6 +222,15 @@ struct Holt : Module {
         configParam(FREQUENCY_PARAM, 0.f, 1.f, 1.f, "Frequency");
         configParam(RESONANCE_PARAM, 0.f, 1.f, 0.f, "Resonance");
         configParam(POLES_PARAM, 0.f, 1.f, 1.f, "Poles");
+
+        configInput(FREQUENCY_CV_INPUT, "Frequency CV");
+        configInput(RESONANCE_CV_INPUT, "Resonance CV");
+        configInput(POLES_CV_INPUT, "Poles CV");
+        configInput(IN_INPUT, "Signal");
+        configOutput(OUT_OUTPUT, "Signal");
+
+        configBypass(IN_INPUT, OUT_OUTPUT);
+
         onReset();
     }
 

@@ -63,6 +63,13 @@ struct Hombre : Module {
         configParam(VOICING_PARAM, 0.f, 1.f, 0.5f, "Voicing");
         configParam(INTENSITY_PARAM, 0.f, 1.f, 0.5f, "Intensity");
 
+        configInput(VOICING_CV_INPUT, "Voicing CV");
+        configInput(INTENSITY_CV_INPUT, "Intensity CV");
+        configInput(IN_INPUT, "Signal");
+        configOutput(OUT_OUTPUT, "Signal");
+
+        configBypass(IN_INPUT, OUT_OUTPUT);
+
         onReset();
     }
 

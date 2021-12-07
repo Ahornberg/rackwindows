@@ -209,6 +209,18 @@ struct Mv : Module {
         configParam(DRYWET_CV_PARAM, -1.f, 1.f, 0.f, "Dry/Wet CV");
         configParam(REGEN_CV_PARAM, -1.f, 1.f, 0.f, "Regeneration CV");
 
+        configInput(DEPTH_CV_INPUT, "Depth CV");
+        configInput(BRIGHT_CV_INPUT, "Brightness CV");
+        configInput(DRYWET_CV_INPUT, "Dry/wet CV");
+        configInput(REGEN_CV_INPUT, "Regeneration CV");
+        configInput(IN_L_INPUT, "Signal L");
+        configInput(IN_R_INPUT, "Signal R");
+        configOutput(OUT_L_OUTPUT, "Signal L");
+        configOutput(OUT_R_OUTPUT, "Signal R");
+
+        configBypass(IN_L_INPUT, OUT_L_OUTPUT);
+        configBypass(IN_R_INPUT, OUT_R_OUTPUT);
+
         onReset();
     }
 

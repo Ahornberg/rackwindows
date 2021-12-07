@@ -96,7 +96,20 @@ struct Capacitor_stereo : Module {
         configParam(HIGHPASS_L_PARAM, 0.f, 1.f, 0.f, "Highpass L");
         configParam(HIGHPASS_R_PARAM, 0.f, 1.f, 0.f, "Highpass R");
         configParam(DRYWET_PARAM, 0.f, 1.f, 1.f, "Dry/Wet");
-        configParam(LINK_PARAM, 0.f, 1.f, 1.f, "Link");
+        configSwitch(LINK_PARAM, 0.f, 1.f, 1.f, "Link", {"Not linked", "Linked"});
+
+        configInput(LOWPASS_CV_L_INPUT, "Lowpass L CV");
+        configInput(LOWPASS_CV_R_INPUT, "Lowpass R CV");
+        configInput(HIGHPASS_CV_L_INPUT, "Highpass L CV");
+        configInput(HIGHPASS_CV_R_INPUT, "Highpass R CV");
+        configInput(DRYWET_CV_INPUT, "Dry/wet CV");
+        configInput(IN_L_INPUT, "Signal L");
+        configInput(IN_R_INPUT, "Signal R");
+        configOutput(OUT_L_OUTPUT, "Signal L");
+        configOutput(OUT_R_OUTPUT, "Signal R");
+
+        configBypass(IN_L_INPUT, OUT_L_OUTPUT);
+        configBypass(IN_R_INPUT, OUT_R_OUTPUT);
 
         isLinked = true;
         onReset();

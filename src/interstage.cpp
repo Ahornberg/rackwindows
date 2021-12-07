@@ -67,6 +67,14 @@ struct Interstage : Module {
     {
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
 
+        configInput(IN_L_INPUT, "Signal L");
+        configInput(IN_R_INPUT, "Signal R");
+        configOutput(OUT_L_OUTPUT, "Signal L");
+        configOutput(OUT_R_OUTPUT, "Signal R");
+
+        configBypass(IN_L_INPUT, OUT_L_OUTPUT);
+        configBypass(IN_R_INPUT, OUT_R_OUTPUT);
+
         onReset();
     }
 

@@ -71,6 +71,14 @@ struct Tremolo : Module {
         configParam(SPEED_PARAM, 0.f, 1.f, 0.f, "Speed");
         configParam(DEPTH_PARAM, 0.f, 1.f, 0.f, "Depth");
 
+        configInput(CLOCK_CV_INPUT, "Clock CV");
+        configInput(SPEED_CV_INPUT, "Speed CV");
+        configInput(DEPTH_CV_INPUT, "Depth CV");
+        configInput(IN_INPUT, "Signal");
+        configOutput(OUT_OUTPUT, "Signal");
+
+        configBypass(IN_INPUT, OUT_OUTPUT);
+
         onReset();
     }
 

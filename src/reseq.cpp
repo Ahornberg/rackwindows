@@ -77,6 +77,16 @@ struct Reseq : Module {
         }
         configParam(DRYWET_PARAM, 0.f, 1.f, 1.f, "Dry/Wet");
 
+        configInput(RESO_CV_INPUTS + 0, "Reso I CV");
+        configInput(RESO_CV_INPUTS + 1, "Reso II CV");
+        configInput(RESO_CV_INPUTS + 2, "Reso III CV");
+        configInput(RESO_CV_INPUTS + 3, "Reso IV CV");
+        configInput(DRYWET_CV_INPUT, "Dry/wet CV");
+        configInput(IN_INPUT, "Signal");
+        configOutput(OUT_OUTPUT, "Signal");
+
+        configBypass(IN_INPUT, OUT_OUTPUT);
+
         onReset();
     }
 
